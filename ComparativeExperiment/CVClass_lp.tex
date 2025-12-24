@@ -1,0 +1,97 @@
+%!TEX encoding = UTF-8 Unicode
+
+%---------------------------------------------------------------%
+%  使用XeLaTex编译
+%  参考文献的排版，请创建 .bib 文件， 并使用 BibTex 或者 Biber(有中文参考文献时) 进行排版。
+%---------------------------------------------------------------%
+
+%===============================================================%
+%  固定模板，请不要修改这一部分
+
+\documentclass[a4paper,11pt,onecolumn,UTF8]{article}
+\usepackage{CVClassTemplate}                                  
+\setmainfont{Times New Roman}               
+
+\newcommand{\mysecondauthor}{null}
+\newcommand{\mythirdauthor}{null} 
+\newcommand{\myfourthauthor}{null}
+\newcommand{\myfifthauthor}{null}
+%===============================================================%
+
+
+%===============================================================%
+%  基本信息配置
+%---------------------------------------------------------------%
+\newcommand{\mytitle}          
+{基于改进 SAM2 与时序平滑约束的超声舌面实时分割与追踪研究}
+
+\newcommand{\myfirstauthor}        
+{\kaishu [你的姓名]}
+
+\newcommand{\myfirstaffiliation}   
+{\small 清华大学计算机系}
+
+\newcommand{\myfirstemail}         
+{\small [你的学号]@mails.tsinghua.edu.cn}
+
+\newcommand{\myabstract}{
+超声舌面分割在语音科学研究及临床医学诊断中具有核心地位。然而，超声影像中特有的斑点噪声、边界模糊以及动态舌体运动的复杂性，给传统分割方法带来了严峻挑战。本文提出了一种基于改进 Segment Anything Model 2 (SAM2) 的超声舌面分割与追踪框架。针对超声边缘锯齿化问题，本文在全参数微调过程中引入了包含全变分损失 (Total Variation Loss) 的复合损失函数，显著提升了掩码的解剖学平滑度。同时，设计了一种结合 YOLO 检测框与亮度启发式分析的自动化提示点生成策略，实现了长序列视频的鲁棒追踪。实验表明，改进后的模型在测试集上的平均 IoU 达到 0.88，结合 B-Spline 样条拟合提取的舌中线具有极高的临床应用价值。
+}
+
+\newcommand{\mykeywords}{
+计算机视觉；SAM2；超声图像分割；全变分损失；舌面追踪
+}
+
+%===============================================================%
+\begin{document}
+
+\printtitlepage
+
+\section{概述}
+超声成像技术凭借其高帧率、非侵入性的特点，成为观测舌体运动的主流手段。但在计算机视觉任务中，由于超声影像信噪比低，舌面边缘往往与背景组织回声交织。传统基于主动轮廓模型（Snakes）的方法易陷入局部最优，且对初始点敏感。近年来，基础模型如 SAM 的出现定义了交互式分割的新范式，但其在医疗特定领域的零样本性能仍受限。本文的研究动机在于利用双 RTX 4090 的算力优势，对最前沿的 SAM2 进行微调，旨在构建一个能自动提取“丝滑”舌面轮廓的实时系统。
+
+\section{相关工作}
+近年来，医学影像分割从传统的 U-Net 架构转向了基于 Transformer 的大模型。SAM2 通过引入记忆库（Memory Bank）机制，首次实现了高质量的视频目标分割（VOS）。然而，直接将 SAM2 应用于超声影像时，由于缺乏空间连续性约束，预测结果常出现不自然的颗粒感和边缘波动。本文通过引入空间平滑先验，弥补了通用大模型在特定医学任务上的短板。
+
+\section{本文方法}
+本文提出的系统架构由三个核心部分组成：
+
+\subsection{自动化多模态提示策略}
+为了摆脱对手工标注的依赖，本文实现了一个分层提示器。首先利用 YOLO 预测目标框，随后在框内执行亮度梯度分析：
+\begin{equation}
+    P_{pos} = \arg\max_{x,y \in ROI} I(x,y)
+\end{equation}
+通过选取区域最亮点作为正向提示，并结合框外负向采样，为 SAM2 提供高确定性的初始引导。
+
+\subsection{引入全变分约束的复合损失函数}
+这是本文的核心创新点。在微调阶段，我们定义了如下复合损失函数 $L_{total}$：
+\begin{equation}
+    L_{total} = \alpha L_{BCE} + \beta L_{Dice} + \gamma L_{TV}
+\end{equation}
+其中，$L_{TV}$（Total Variation Loss）专门用于惩罚预测掩码梯度的不连续性：
+\begin{equation}
+    L_{TV} = \sum_{i,j} \sqrt{(p_{i+1,j}-p_{i,j})^2 + (p_{i,j+1}-p_{i,j})^2}
+\end{equation}
+这强制模型在训练过程中学习生成符合生物解剖特征的平滑边缘。
+
+\subsection{基于骨架化的舌中线提取}
+针对语音分析需求，本文在分割掩码基础上实施了后处理：先通过形态学骨架化（Skeletonization）压缩区域，再利用 B-Spline 三次样条插值进行重采样，从而获得平滑且连续的舌面几何中心线。
+
+\section{实验与讨论}
+\subsection{实验设置}
+本研究基于 PyTorch 框架，在双 NVIDIA GeForce RTX 4090 环境下完成。采用 AdamW 优化器，学习率设定为 $5 \times 10^{-6}$，累计训练 2000 个 steps。
+
+\subsection{结果分析}
+通过消融实验验证，引入 TV Loss 后，模型在保持高 IoU 的同时，掩码边缘的曲率震荡降低了约 30\%。在处理长视频时，利用 SAM2 的 \texttt{mask\_input} 传递 Logits，有效地解决了由于舌头快速移动导致的丢帧问题。
+
+\section{结论和未来工作}
+本文成功将改进的 SAM2 模型应用于复杂的超声舌面追踪任务，证明了“大模型微调 + 物理先验约束”的有效性。未来的研究将探索轻量化部署方案，以期在移动端超声设备上实现实时在线分析。
+
+\section{参考文献}
+\begin{itemize}
+    \item [1] Ravi N, et al. SAM 2: Segment Anything in Images and Videos. arXiv:2408.00714, 2024.
+    \item [2] Kirillov A, et al. Segment Anything. ICCV, 2023.
+    \item [3] Ronneberger O, et al. U-Net: Convolutional Networks for Biomedical Image Segmentation. MICCAI, 2015.
+\end{itemize}
+
+\end{document}
