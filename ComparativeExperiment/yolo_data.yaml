@@ -1,0 +1,6 @@
+path: /data/projects/tongue_segmentation/ComparativeExperiment/yolo_dataset
+train: images
+val: images 
+
+names:
+  0: tongue
